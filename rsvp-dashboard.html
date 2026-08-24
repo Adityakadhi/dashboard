@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RSVP Dashboard — Redco</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Jost:wght@300;400;500&display=swap');
+
+  :root{
+    --ink:#0A0F0D;
+    --emerald:#132420;
+    --gold:#C6A664;
+    --gold-soft:#E4D5A8;
+    --ivory:#EDE6D6;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--ivory);
+    font-family:'Jost', sans-serif;
+    padding:32px 20px 60px;
+  }
+  .wrap{max-width:1000px;margin:0 auto;}
+  h1{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:600;
+    font-size:32px;
+    margin:0 0 4px;
+  }
+  .sub{
+    color:rgba(237,230,214,0.6);
+    font-size:13px;
+    margin-bottom:24px;
+  }
+  .config-note{
+    border:1px solid rgba(198,166,100,0.35);
+    padding:14px 18px;
+    font-size:12.5px;
+    line-height:1.7;
+    color:rgba(237,230,214,0.75);
+    margin-bottom:24px;
+  }
+  .config-note code{
+    color:var(--gold-soft);
+    background:rgba(198,166,100,0.1);
+    padding:1px 5px;
+  }
+  .stats{
+    display:flex;
+    gap:16px;
+    margin-bottom:24px;
+    flex-wrap:wrap;
+  }
+  .stat{
+    border:1px solid rgba(198,166,100,0.35);
+    padding:14px 20px;
+    min-width:110px;
+  }
+  .stat .num{font-family:'Cormorant Garamond', serif;font-size:26px;color:var(--gold-soft);}
+  .stat .label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.6;margin-top:2px;}
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  th{
+    text-align:left;
+    font-size:10px;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--gold);
+    padding:10px 12px;
+    border-bottom:1px solid rgba(198,166,100,0.4);
+    white-space:nowrap;
+  }
+  td{
+    padding:11px 12px;
+    border-bottom:1px solid rgba(198,166,100,0.15);
+    vertical-align:top;
+    white-space:nowrap;
+  }
+  tr:hover td{background:rgba(198,166,100,0.04);}
+  td a{color:var(--gold-soft);}
+  .empty, .loading{
+    text-align:center;
+    padding:60px 20px;
+    color:rgba(237,230,214,0.5);
+    font-size:13.5px;
+    border:1px dashed rgba(198,166,100,0.3);
+  }
+  .refresh{
+    background:transparent;
+    border:1px solid var(--gold);
+    color:var(--gold-soft);
+    font-family:'Jost',sans-serif;
+    font-size:11px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    padding:10px 18px;
+    cursor:pointer;
+    margin-bottom:24px;
+  }
+  .refresh:hover{background:var(--gold);color:var(--ink);}
+  .auto-note{
+    font-size:11px;
+    color:rgba(237,230,214,0.5);
+    margin-left:12px;
+    letter-spacing:0.5px;
+  }
+  .tablewrap{overflow-x:auto;}
+  .last-updated{
+    font-size:11px;
+    color:rgba(237,230,214,0.45);
+    margin-top:14px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RSVP Dashboard</h1>
+  <div class="sub">Live, direct from your Google Sheet.</div>
+
+  <div class="config-note">
+    Reads live from Google Sheet ID <code>1niBCKkf_1AhSwnV8RIkPTdEK--i4RK83Ue6GxyigCCo</code>, sheet tab <code>Sheet1</code>.
+    For this to load, the Sheet's sharing must be set to <strong>"Anyone with the link — Viewer"</strong>
+    (Share button, top right of the Sheet). This page only ever reads, never edits, your Sheet.
+  </div>
+
+  <button class="refresh" id="refreshBtn">Refresh Now</button>
+  <span class="auto-note">Auto-updates every 15 seconds</span>
+
+  <div class="stats" id="stats"></div>
+  <div id="content"><div class="loading">Loading responses…</div></div>
+  <div class="last-updated" id="lastUpdated"></div>
+</div>
+
+<script>
+  // ---- EDIT THESE TO MATCH YOUR SHEET ----
+  const SHEET_ID = '1niBCKkf_1AhSwnV8RIkPTdEK--i4RK83Ue6GxyigCCo';
+  const SHEET_TAB = 'Sheet1';
+  // -----------------------------------------
+
+  async function loadData(){
+    const content = document.getElementById('content');
+    const stats = document.getElementById('stats');
+    content.innerHTML = '<div class="loading">Loading responses…</div>';
+
+    try{
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_TAB)}`;
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('Sheet fetch failed — check sharing settings (needs "Anyone with the link" access).');
+
+      const text = await res.text();
+      // Response is wrapped like: /*O_o*/ google.visualization.Query.setResponse({...});
+      const jsonStart = text.indexOf('{');
+      const jsonEnd = text.lastIndexOf('}');
+      const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+
+      const cols = parsed.table.cols.map(c => c.label || '');
+      const rows = parsed.table.rows.map(r => r.c.map(cell => cell ? (cell.f || cell.v) : ''));
+
+      if(rows.length === 0){
+        content.innerHTML = '<div class="empty">No RSVPs yet. Once partners confirm on the invitation page, they\\'ll appear here.</div>';
+        stats.innerHTML = '';
+        document.getElementById('lastUpdated').textContent = 'Last checked: ' + new Date().toLocaleString();
+        return;
+      }
+
+      // Expected columns: Timestamp, Name, Company, Contact, Email, Date, Time, Pax, Pass No., Pass Link
+      const idx = (label) => cols.findIndex(c => c.toLowerCase().includes(label.toLowerCase()));
+      const iDate = idx('Date');
+      const iPax = idx('Pax');
+
+      const total = rows.length;
+      const count24 = rows.filter(r => iDate >= 0 && String(r[iDate]).includes('24')).length;
+      const count25 = rows.filter(r => iDate >= 0 && String(r[iDate]).includes('25')).length;
+      const totalPax = rows.reduce((sum, r) => {
+        const v = iPax >= 0 ? parseInt(r[iPax], 10) : 0;
+        return sum + (isNaN(v) ? 0 : v);
+      }, 0);
+
+      stats.innerHTML = `
+        <div class="stat"><div class="num">${total}</div><div class="label">Total RSVPs</div></div>
+        <div class="stat"><div class="num">${count24}</div><div class="label">24th August</div></div>
+        <div class="stat"><div class="num">${count25}</div><div class="label">25th August</div></div>
+        <div class="stat"><div class="num">${totalPax}</div><div class="label">Total Pax</div></div>
+      `;
+
+      const headerRow = '<tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr>';
+      const bodyRows = rows.map(r => {
+        return '<tr>' + r.map((cell, i) => {
+          const val = cell == null ? '' : String(cell);
+          const isLink = cols[i] && cols[i].toLowerCase().includes('link') && val.startsWith('http');
+          return `<td>${isLink ? `<a href="${escapeAttr(val)}" target="_blank">Open</a>` : escapeHtml(val)}</td>`;
+        }).join('') + '</tr>';
+      }).join('');
+
+      content.innerHTML = `<div class="tablewrap"><table><thead>${headerRow}</thead><tbody>${bodyRows}</tbody></table></div>`;
+      document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleString();
+
+    }catch(err){
+      content.innerHTML = `<div class="empty">Could not load the Sheet. Most likely cause: sharing isn't set to "Anyone with the link". Error: ${escapeHtml(err.message || String(err))}</div>`;
+      console.error(err);
+    }
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+  function escapeAttr(str){
+    return String(str).replace(/"/g, '&quot;');
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadData);
+  loadData();
+
+  // Auto-refresh every 15 seconds, but skip while the tab is in the background
+  setInterval(() => {
+    if(document.visibilityState === 'visible'){
+      loadData();
+    }
+  }, 15000);
+</script>
+</body>
+</html>
