@@ -163,7 +163,7 @@
       const rows = parsed.table.rows.map(r => r.c.map(cell => cell ? (cell.f || cell.v) : ''));
 
       if(rows.length === 0){
-        content.innerHTML = '<div class="empty">No RSVPs yet. Once partners confirm on the invitation page, they\\'ll appear here.</div>';
+        content.innerHTML = '<div class="empty">No RSVPs yet. Once partners confirm on the invitation page, they will appear here.</div>';
         stats.innerHTML = '';
         document.getElementById('lastUpdated').textContent = 'Last checked: ' + new Date().toLocaleString();
         return;
